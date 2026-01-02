@@ -386,69 +386,6 @@ with tab2:
                             'content': error_msg
                         })
     
-    # Quick question suggestions
-    st.markdown("---")
-    st.markdown("### 💡 Quick Questions")
-    col1, col2 = st.columns(2)
-    
-    def handleQuickQuestion(question):
-        """Handle quick question button click - add question and generate response."""
-        if st.session_state.gemini_model is None:
-            st.warning("⚠️ Please run the analysis first in 'Analysis Mode' to initialize the agent.")
-            return
-        
-        # Add user question to history
-        st.session_state.conversation_history.append({
-            'role': 'user',
-            'content': question
-        })
-        
-        # Generate expert response
-        try:
-            response = chatWithEmailExpert(
-                st.session_state.gemini_model,
-                question,
-                st.session_state.conversation_history[:-1],  # Exclude current message
-                st.session_state.email_context
-            )
-            
-            # Add assistant response to history
-            st.session_state.conversation_history.append({
-                'role': 'assistant',
-                'content': response
-            })
-            
-            st.rerun()
-        except Exception as e:
-            errorStr = str(e)
-            if "429" in errorStr or "ResourceExhausted" in errorStr:
-                if "GenerateRequestsPerDay" in errorStr or "free_tier_requests" in errorStr or "limit: 20" in errorStr:
-                    st.error("""
-                    ⚠️ **Daily Limit Reached**
-                    
-                    You have reached the daily limit of 20 requests.
-                    
-                    **You must wait until tomorrow** to continue.
-                    """)
-                else:
-                    st.error(f"Error: {str(e)}")
-            else:
-                st.error(f"Error: {str(e)}")
-    
-    with col1:
-        if st.button("How to improve open rates?", use_container_width=True, key="q1"):
-            handleQuickQuestion("How can I improve my open rates?")
-        
-        if st.button("What makes a good subject line?", use_container_width=True, key="q2"):
-            handleQuickQuestion("What makes a good subject line?")
-    
-    with col2:
-        if st.button("How to reduce unsubscribes?", use_container_width=True, key="q3"):
-            handleQuickQuestion("How to reduce unsubscribe rates?")
-        
-        if st.button("Best practices for CTAs?", use_container_width=True, key="q4"):
-            handleQuickQuestion("Best practices for email CTAs?")
-    
     # Sidebar actions
     with st.sidebar:
         st.markdown("---")
