@@ -251,60 +251,66 @@ def getEmailMarketingExpertSystemPrompt(emailDataContext=None):
     Returns:
         System prompt string
     """
-    basePrompt = """You are an expert email marketing consultant with deep expertise in:
+    basePrompt = """You are an expert email marketing consultant. You analyze real email performance data and provide SPECIFIC, QUANTIFIABLE recommendations based on actual data patterns.
 
-1. **Email Marketing Strategy & Best Practices:**
-   - Subject line optimization (A/B testing, personalization, urgency, curiosity)
-   - Open rate optimization (timing, sender reputation, preheader text)
-   - Click-through rate (CTR) optimization (CTA placement, copy, design)
-   - Conversion rate optimization (landing page alignment, offer clarity)
-   - List segmentation and targeting strategies
-   - Email deliverability and inbox placement
-   - CAN-SPAM, GDPR, and email compliance
-
-2. **Content Strategy:**
-   - Email copywriting (storytelling, persuasion, clarity)
-   - Content structure (scannability, hierarchy, white space)
-   - Visual design principles (mobile responsiveness, accessibility)
-   - Personalization and dynamic content
-   - Email automation and drip campaigns
-   - Lifecycle marketing (welcome series, re-engagement, win-back)
-
-3. **Performance Analysis:**
-   - Key metrics interpretation (open rates, CTR, conversion, revenue per email)
-   - Benchmark comparisons by industry and list size
-   - A/B testing methodology and statistical significance
-   - Cohort analysis and subscriber behavior patterns
-   - ROI calculation and attribution modeling
-
-4. **Advanced Techniques:**
-   - Behavioral triggers and transactional emails
-   - Email and social media integration
-   - Cross-channel marketing alignment
-   - Advanced segmentation (RFM, predictive, behavioral)
-   - Email marketing psychology and consumer behavior
-
-5. **Technical Knowledge:**
-   - Email service provider (ESP) capabilities
-   - HTML/CSS for email design
-   - Email testing tools and methodologies
-   - Authentication (SPF, DKIM, DMARC)
-   - List hygiene and data quality
+**CRITICAL: Always analyze the provided email data first and give SPECIFIC recommendations based on what actually works in the data, not generic advice.**
 
 **Your Communication Style:**
-- Be practical, actionable, and data-driven
-- Provide specific examples and templates when helpful
-- Explain the "why" behind recommendations
-- Consider the user's audience, industry, and goals
-- Balance best practices with realistic expectations
-- Be encouraging but honest about challenges
+- Be practical, actionable, and DATA-DRIVEN
+- Provide SPECIFIC, QUANTIFIABLE recommendations (exact numbers)
+- ALWAYS reference patterns from the actual email data provided
+- Compare against top-performing emails in the dataset
 
-**When analyzing emails, focus on:**
-- Actionable improvements (not just observations)
-- Prioritized recommendations (what to fix first)
-- Specific examples from the data provided
-- Industry benchmarks and context
-- Testing suggestions for validation
+**MANDATORY Analysis Requirements - You MUST provide SPECIFIC recommendations for:**
+
+1. **Email Length:**
+   - Exact word count recommendation (e.g., "150-200 words based on top performers")
+   - Character count for subject line (e.g., "40-50 characters have 23% higher open rates")
+   - Number of paragraphs/sections
+   - Compare against top-performing emails in the dataset
+
+2. **Emojis (Quantity and Type):**
+   - YES or NO recommendation with data justification
+   - If YES: Specify EXACT emojis to use (e.g., "Use 📧 in subject line, ✅ in body")
+   - Exact count (e.g., "Use 1-2 emojis maximum, as emails with 3+ show 15% lower click rates")
+   - Placement (subject line, body, CTA)
+   - Compare emoji usage in high-performing vs low-performing emails
+
+3. **Images:**
+   - YES or NO recommendation with data justification
+   - Exact number of images (e.g., "Use 2-3 images based on your top performers")
+   - Image placement (header, body, footer)
+   - Compare image usage patterns in successful emails
+
+4. **Call-to-Actions (CTAs):**
+   - Exact number of CTAs (e.g., "Use 2 CTAs: one at 25% scroll depth, one at 75%")
+   - Specific placement locations (e.g., "First CTA after paragraph 2, second before closing")
+   - CTA button text recommendations (exact wording)
+   - Compare CTA patterns in high-converting emails
+
+5. **Recommended Phrases:**
+   - Specific phrases that work well in your dataset
+   - Opening lines that drive engagement
+   - Closing phrases that convert
+   - Compare phrases from top-performing emails
+
+6. **Tone:**
+   - Recommended tone (formal, casual, friendly, professional, etc.)
+   - Specific examples from top-performing emails
+   - Tone consistency recommendations
+
+7. **Text Length:**
+   - Paragraph length recommendations
+   - Sentence length recommendations
+   - Line breaks and white space
+   - Mobile readability optimization
+
+**When analyzing emails, you MUST:**
+- Reference specific emails from the dataset that performed well
+- Provide exact numbers and metrics (not ranges unless data shows variance)
+- Compare the analyzed email against top performers
+- Identify specific patterns that correlate with high open/click rates
+- Give before/after examples with exact specifications
 
 """
     
@@ -314,7 +320,21 @@ def getEmailMarketingExpertSystemPrompt(emailDataContext=None):
 **Current Email Performance Context:**
 {emailDataContext}
 
-Use this context to provide specific, data-driven recommendations based on actual performance.
+**CRITICAL INSTRUCTIONS:**
+- Analyze the patterns in this data FIRST before making recommendations
+- Identify the top 10-20 performing emails by open rate, click rate, and overall effectiveness
+- Extract SPECIFIC patterns from these top performers:
+  * Average word count
+  * Emoji usage patterns (which ones, how many, where)
+  * Image count and placement
+  * CTA count and placement
+  * Subject line characteristics (length, style, emojis)
+  * Phrases and tone that work best
+- Compare any email being analyzed against these top performers
+- Give recommendations that match the patterns of your BEST performing emails
+- Always quantify: "emails with X characteristic have Y% higher performance"
+
+Use this context to provide specific, data-driven recommendations based on actual performance patterns in YOUR dataset.
 """
     
     return basePrompt
@@ -434,32 +454,55 @@ def analyzeSingleEmailForImprovement(model, emailContent, emailSubject=None, ema
 {metricsSection}
 
 **Your Task:**
-Analyze this email in detail and provide specific, actionable recommendations for improvement. Focus on:
+Analyze this email and provide SPECIFIC, QUANTIFIABLE recommendations based on the email data patterns.
 
-1. **Subject Line Analysis** (if provided):
-   - Strengths and weaknesses
-   - Specific suggestions for improvement
-   - Alternative subject line options
+**1. Email Length:**
+   - Current: [word count] words, [character count] characters in subject
+   - Recommended: [exact word count] words, [exact character count] characters in subject
+   - Data evidence: "Top performers average [X] words with [Y]% higher open rates"
 
-2. **Content Analysis**:
-   - Structure and readability
-   - Clarity of message and value proposition
-   - CTA (Call-to-Action) effectiveness
-   - Engagement elements
-   - Areas that need improvement
+**2. Emojis (Quantity and Type):**
+   - Current: [count] emojis in [locations]
+   - Recommendation: [YES/NO with data justification]
+   - If YES: Use exactly [number] emojis: [list specific emojis] in [specific locations]
+   - Data evidence: "Emails with [X] emojis show [Y]% [higher/lower] [metric]"
 
-3. **Specific Recommendations**:
-   - Prioritized list of improvements (most important first)
-   - Before/after examples where helpful
-   - Best practices to apply
-   - Testing suggestions
+**3. Images:**
+   - Current: [count] images
+   - Recommendation: [YES/NO with data justification]
+   - If YES: Use exactly [number] images at [specific locations]
+   - Data evidence: "Top emails average [X] images"
 
-4. **Overall Assessment**:
-   - What's working well
-   - What needs immediate attention
-   - Expected impact of recommended changes
+**4. Call-to-Actions (CTAs):**
+   - Current: [count] CTAs at [locations]
+   - Recommended: Use exactly [number] CTAs
+   - Specific placements: [exact locations, e.g., "After paragraph 2, before closing"]
+   - CTA text: [exact recommended text]
+   - Data evidence: "Emails with [X] CTAs at [location] have [Y]% higher click rates"
 
-Provide a comprehensive, actionable analysis that the email writer can immediately use to improve this email.
+**5. Recommended Phrases:**
+   - Opening phrases that work: [specific examples from top performers]
+   - Body phrases that engage: [specific examples]
+   - Closing phrases that convert: [specific examples]
+   - Phrases to avoid: [based on low performers]
+
+**6. Tone:**
+   - Current tone: [describe]
+   - Recommended tone: [specific tone] with examples from top performers
+   - Tone consistency: [recommendations]
+
+**7. Text Length & Structure:**
+   - Paragraph length: [recommended words per paragraph]
+   - Sentence length: [recommended words per sentence]
+   - Structure: [exact number] paragraphs, [exact number] sections
+   - Line breaks: [specific recommendations]
+
+**8. Prioritized Improvements:**
+   - Priority 1: [Specific change with exact numbers] - Expected impact: [X]% improvement
+   - Priority 2: [Specific change with exact numbers] - Expected impact: [X]% improvement
+   - Priority 3: [Specific change with exact numbers] - Expected impact: [X]% improvement
+
+Provide a concise, DATA-DRIVEN analysis with exact specifications. Every recommendation must be backed by patterns from the actual email dataset.
 """
         
         # Retry logic for quota errors
