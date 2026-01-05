@@ -27,15 +27,32 @@ CACHE_DIR = Path("cache")
 CACHE_DIR.mkdir(exist_ok=True)
 CACHE_FILE = CACHE_DIR / "analysis_cache.json"
 
-def calculateDataHash(email_data):
+def calculateDataHash(email_data, email_ids=None):
     """
     Calculate a hash of the email data to detect changes.
-    Uses subject, content, and metrics to create a unique identifier.
+    Uses subject, content, metrics, and email IDs to create a unique identifier.
+    
+    Args:
+        email_data: DataFrame with email data
+        email_ids: Optional list of email IDs being analyzed (from EMAIL_IDS env var)
     """
     # Create a string representation of key data
     data_string = ""
+    
+    # Include email IDs in hash if provided (ensures cache is specific to ID list)
+    if email_ids:
+        # Sort IDs to ensure consistent hash regardless of order
+        sorted_ids = sorted([str(id) for id in email_ids])
+        data_string += f"IDS:{','.join(sorted_ids)}|"
+    else:
+        # If no IDs specified, include all IDs from the data to detect changes
+        if 'id' in email_data.columns:
+            sorted_ids = sorted([str(id) for id in email_data['id'].unique()])
+            data_string += f"IDS:{','.join(sorted_ids)}|"
+    
+    # Include email content and metrics
     for _, row in email_data.iterrows():
-        data_string += f"{row.get('subject', '')}{row.get('plaintext', '')}{row.get('message_body', '')}"
+        data_string += f"{row.get('id', '')}{row.get('subject', '')}{row.get('plaintext', '')}{row.get('message_body', '')}"
         data_string += f"{row.get('mcsent', 0)}{row.get('mcopened', 0)}{row.get('mcclicked', 0)}{row.get('mcunsub', 0)}"
     
     # Calculate hash
@@ -112,10 +129,16 @@ def runCompleteAnalysis(force_refresh=False):
             st.error(f"Failed to load email data: {str(e)}")
             return False
     
-    # Step 2: Calculate data hash
-    current_hash = calculateDataHash(email_data)
+    # Step 2: Get email IDs from environment (for cache hash)
+    emailIdsStr = os.getenv("EMAIL_IDS", "").strip()
+    email_ids = None
+    if emailIdsStr:
+        email_ids = [id.strip() for id in emailIdsStr.split(',') if id.strip()]
     
-    # Step 3: Check cache if not forcing refresh
+    # Step 3: Calculate data hash (including IDs to detect changes in ID list)
+    current_hash = calculateDataHash(email_data, email_ids)
+    
+    # Step 4: Check cache if not forcing refresh
     if not force_refresh:
         cached_data = loadCachedAnalysis()
         if cached_data and cached_data.get('data_hash') == current_hash:
@@ -125,7 +148,7 @@ def runCompleteAnalysis(force_refresh=False):
             st.session_state.data_hash = current_hash
             return True
     
-    # Step 4: Initialize agent if needed
+    # Step 5: Initialize agent if needed
     if st.session_state.gemini_model is None:
         with st.spinner("Initializing AI agent..."):
             try:
@@ -134,7 +157,7 @@ def runCompleteAnalysis(force_refresh=False):
                 st.error(f"Failed to initialize agent: {str(e)}")
                 return False
     
-    # Step 5: Run analysis (data changed or cache doesn't exist)
+    # Step 6: Run analysis (data changed or cache doesn't exist)
     with st.spinner("Analyzing emails with AI... This may take a few minutes."):
         try:
             analysis = analyzeEmailBatch(
