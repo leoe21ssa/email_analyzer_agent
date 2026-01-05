@@ -1,6 +1,11 @@
 import streamlit as st
 import logging
 import re
+import hashlib
+import json
+import os
+from datetime import datetime
+from pathlib import Path
 from src.processor import processEmailData
 from src.agent import (
     initializeGeminiAgent, 
@@ -16,6 +21,75 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+# Cache directory
+CACHE_DIR = Path("cache")
+CACHE_DIR.mkdir(exist_ok=True)
+CACHE_FILE = CACHE_DIR / "analysis_cache.json"
+
+def calculateDataHash(email_data, email_ids=None):
+    """
+    Calculate a hash of the email data to detect changes.
+    Uses subject, content, metrics, and email IDs to create a unique identifier.
+    
+    Args:
+        email_data: DataFrame with email data
+        email_ids: Optional list of email IDs being analyzed (from EMAIL_IDS env var)
+    """
+    # Create a string representation of key data
+    data_string = ""
+    
+    # Include email IDs in hash if provided (ensures cache is specific to ID list)
+    if email_ids:
+        # Sort IDs to ensure consistent hash regardless of order
+        sorted_ids = sorted([str(id) for id in email_ids])
+        data_string += f"IDS:{','.join(sorted_ids)}|"
+    else:
+        # If no IDs specified, include all IDs from the data to detect changes
+        if 'id' in email_data.columns:
+            sorted_ids = sorted([str(id) for id in email_data['id'].unique()])
+            data_string += f"IDS:{','.join(sorted_ids)}|"
+    
+    # Include email content and metrics
+    for _, row in email_data.iterrows():
+        data_string += f"{row.get('id', '')}{row.get('subject', '')}{row.get('plaintext', '')}{row.get('message_body', '')}"
+        data_string += f"{row.get('mcsent', 0)}{row.get('mcopened', 0)}{row.get('mcclicked', 0)}{row.get('mcunsub', 0)}"
+    
+    # Calculate hash
+    return hashlib.md5(data_string.encode()).hexdigest()
+
+def loadCachedAnalysis():
+    """Load cached analysis if it exists and is valid."""
+    if not CACHE_FILE.exists():
+        return None
+    
+    try:
+        with open(CACHE_FILE, 'r', encoding='utf-8') as f:
+            cache_data = json.load(f)
+        return cache_data
+    except Exception as e:
+        logger.warning(f"Failed to load cache: {str(e)}")
+        return None
+
+def saveAnalysisToCache(analysis_result, email_context, data_hash, email_data):
+    """Save analysis results to cache."""
+    try:
+        cache_data = {
+            'analysis_result': analysis_result,
+            'email_context': email_context,
+            'data_hash': data_hash,
+            'timestamp': datetime.now().isoformat(),
+            'email_count': len(email_data),
+            'avg_open_rate': float(email_data['openRate'].mean()) if 'openRate' in email_data.columns else 0,
+            'avg_click_rate': float(email_data['clickRate'].mean()) if 'clickRate' in email_data.columns else 0,
+        }
+        
+        with open(CACHE_FILE, 'w', encoding='utf-8') as f:
+            json.dump(cache_data, f, ensure_ascii=False, indent=2)
+        
+        logger.info(f"Analysis cached successfully. Hash: {data_hash[:8]}...")
+    except Exception as e:
+        logger.error(f"Failed to save cache: {str(e)}")
 
 # Page configuration
 st.set_page_config(
@@ -34,22 +108,17 @@ if 'conversation_history' not in st.session_state:
     st.session_state.conversation_history = []
 if 'email_context' not in st.session_state:
     st.session_state.email_context = None
+if 'data_hash' not in st.session_state:
+    st.session_state.data_hash = None
+if 'analysis_loaded' not in st.session_state:
+    st.session_state.analysis_loaded = False
 
-def runCompleteAnalysis():
+def runCompleteAnalysis(force_refresh=False):
     """
     Run complete email analysis automatically.
-    This function does everything: initializes agent, loads data, and analyzes.
+    Uses cache if available and data hasn't changed.
     """
-    # Step 1: Initialize agent if needed
-    if st.session_state.gemini_model is None:
-        with st.spinner("Initializing AI agent..."):
-            try:
-                st.session_state.gemini_model = initializeGeminiAgent()
-            except Exception as e:
-                st.error(f"Failed to initialize agent: {str(e)}")
-                return False
-    
-    # Step 2: Load email data
+    # Step 1: Load email data
     with st.spinner("Loading emails from database..."):
         try:
             email_data = processEmailData()
@@ -60,7 +129,35 @@ def runCompleteAnalysis():
             st.error(f"Failed to load email data: {str(e)}")
             return False
     
-    # Step 3: Run analysis
+    # Step 2: Get email IDs from environment (for cache hash)
+    emailIdsStr = os.getenv("EMAIL_IDS", "").strip()
+    email_ids = None
+    if emailIdsStr:
+        email_ids = [id.strip() for id in emailIdsStr.split(',') if id.strip()]
+    
+    # Step 3: Calculate data hash (including IDs to detect changes in ID list)
+    current_hash = calculateDataHash(email_data, email_ids)
+    
+    # Step 4: Check cache if not forcing refresh
+    if not force_refresh:
+        cached_data = loadCachedAnalysis()
+        if cached_data and cached_data.get('data_hash') == current_hash:
+            logger.info("Using cached analysis (data unchanged)")
+            st.session_state.analysis_results = cached_data['analysis_result']
+            st.session_state.email_context = cached_data['email_context']
+            st.session_state.data_hash = current_hash
+            return True
+    
+    # Step 5: Initialize agent if needed
+    if st.session_state.gemini_model is None:
+        with st.spinner("Initializing AI agent..."):
+            try:
+                st.session_state.gemini_model = initializeGeminiAgent()
+            except Exception as e:
+                st.error(f"Failed to initialize agent: {str(e)}")
+                return False
+    
+    # Step 6: Run analysis (data changed or cache doesn't exist)
     with st.spinner("Analyzing emails with AI... This may take a few minutes."):
         try:
             analysis = analyzeEmailBatch(
@@ -81,6 +178,10 @@ Email Performance Summary:
 - Top performing email subject: {topEmails.iloc[0]['subject'] if len(topEmails) > 0 else 'N/A'}
 """
             st.session_state.email_context = summary
+            st.session_state.data_hash = current_hash
+            
+            # Save to cache
+            saveAnalysisToCache(analysis, summary, current_hash, email_data)
             
             return True
         except Exception as e:
@@ -115,18 +216,43 @@ Email Performance Summary:
 st.title("📧 Email Marketing Expert Agent")
 st.markdown("---")
 
+# Auto-load analysis on first run
+if not st.session_state.analysis_loaded:
+    st.session_state.analysis_loaded = True
+    runCompleteAnalysis()
+
 # Two main modes
 tab1, tab2 = st.tabs(["📊 Analysis Mode", "💬 Interactive Chat"])
 
 # TAB 1: Analysis Mode
 with tab1:
     st.header("📊 Complete Email Analysis")
-    st.markdown("Click the button below to automatically analyze all emails from your database.")
+    
+    # Show cache status
+    cached_data = loadCachedAnalysis()
+    if cached_data and st.session_state.data_hash == cached_data.get('data_hash'):
+        cache_time = cached_data.get('timestamp', 'Unknown')
+        try:
+            cache_datetime = datetime.fromisoformat(cache_time)
+            formatted_time = cache_datetime.strftime("%Y-%m-%d %H:%M:%S")
+        except:
+            formatted_time = cache_time
+        st.info(f"ℹ️ **Using cached analysis** from {formatted_time}. Data unchanged since last analysis.")
+    
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.markdown("Click the button below to analyze all emails from your database.")
+    with col2:
+        if st.button("🔄 Force Refresh", help="Force a new analysis even if data hasn't changed"):
+            if runCompleteAnalysis(force_refresh=True):
+                st.success("✅ Analysis refreshed successfully!")
+                st.rerun()
     
     if st.button("🚀 Run Complete Analysis", use_container_width=True, type="primary", key="run_analysis"):
         if runCompleteAnalysis():
             st.success("✅ Analysis completed successfully!")
             st.balloons()
+            st.rerun()
     
     # Display analysis results
     if st.session_state.analysis_results:
@@ -283,75 +409,21 @@ with tab2:
                             'content': error_msg
                         })
     
-    # Quick question suggestions
-    st.markdown("---")
-    st.markdown("### 💡 Quick Questions")
-    col1, col2 = st.columns(2)
-    
-    def handleQuickQuestion(question):
-        """Handle quick question button click - add question and generate response."""
-        if st.session_state.gemini_model is None:
-            st.warning("⚠️ Please run the analysis first in 'Analysis Mode' to initialize the agent.")
-            return
-        
-        # Add user question to history
-        st.session_state.conversation_history.append({
-            'role': 'user',
-            'content': question
-        })
-        
-        # Generate expert response
-        try:
-            response = chatWithEmailExpert(
-                st.session_state.gemini_model,
-                question,
-                st.session_state.conversation_history[:-1],  # Exclude current message
-                st.session_state.email_context
-            )
-            
-            # Add assistant response to history
-            st.session_state.conversation_history.append({
-                'role': 'assistant',
-                'content': response
-            })
-            
-            st.rerun()
-        except Exception as e:
-            errorStr = str(e)
-            if "429" in errorStr or "ResourceExhausted" in errorStr:
-                if "GenerateRequestsPerDay" in errorStr or "free_tier_requests" in errorStr or "limit: 20" in errorStr:
-                    st.error("""
-                    ⚠️ **Daily Limit Reached**
-                    
-                    You have reached the daily limit of 20 requests.
-                    
-                    **You must wait until tomorrow** to continue.
-                    """)
-                else:
-                    st.error(f"Error: {str(e)}")
-            else:
-                st.error(f"Error: {str(e)}")
-    
-    with col1:
-        if st.button("How to improve open rates?", use_container_width=True, key="q1"):
-            handleQuickQuestion("How can I improve my open rates?")
-        
-        if st.button("What makes a good subject line?", use_container_width=True, key="q2"):
-            handleQuickQuestion("What makes a good subject line?")
-    
-    with col2:
-        if st.button("How to reduce unsubscribes?", use_container_width=True, key="q3"):
-            handleQuickQuestion("How to reduce unsubscribe rates?")
-        
-        if st.button("Best practices for CTAs?", use_container_width=True, key="q4"):
-            handleQuickQuestion("Best practices for email CTAs?")
-    
     # Sidebar actions
     with st.sidebar:
         st.markdown("---")
         if st.button("🗑️ Clear Chat History", use_container_width=True):
             st.session_state.conversation_history = []
             st.rerun()
+        
+        st.markdown("---")
+        if st.button("🗑️ Clear Cache", use_container_width=True, help="Delete cached analysis to force refresh"):
+            if CACHE_FILE.exists():
+                CACHE_FILE.unlink()
+                st.success("Cache cleared!")
+                st.rerun()
+            else:
+                st.info("No cache file found.")
 
 if __name__ == "__main__":
     pass

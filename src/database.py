@@ -75,12 +75,25 @@ def getEmailMessages():
     """
     session, engine = getDatabaseSession()
     
-    # Filter by specific email IDs (as strings since id is text type in database)
-    targetIds = ['144', '145', '158', '159', '163', '164', '172', '174', '177', '178']
-    
+    # Get email IDs from environment variable
+    emailIdsStr = os.getenv("EMAIL_IDS", "").strip()
+    if emailIdsStr:
+        # Split by comma, strip whitespace, and filter out empty strings
+        targetIds = [id.strip() for id in emailIdsStr.split(',') if id.strip()]
+        logger.info(f"Filtering emails by IDs from environment: {targetIds}")
+    else:
+        targetIds = None
+        logger.info("No EMAIL_IDS specified in environment - analyzing all emails")
+
     try:
-        # Use SQLAlchemy ORM to query messages with ID filter
-        messages = session.query(Message).filter(Message.id.in_(targetIds)).all()
+        if targetIds:
+            # Use SQLAlchemy ORM to query messages with ID filter
+            messages = session.query(Message).filter(Message.id.in_(targetIds)).all()
+            logger.info(f"Filtered query: Found {len(messages)} emails matching IDs")
+        else:
+            # Get all emails if no IDs specified
+            messages = session.query(Message).all()
+            logger.info(f"Unfiltered query: Found {len(messages)} total emails")
         
         # Convert to list of dictionaries
         messagesData = [
@@ -102,7 +115,12 @@ def getEmailMessages():
         ]
         
         df = pd.DataFrame(messagesData)
-        logger.info(f"Successfully extracted {len(df)} email messages from database (filtered by IDs: {targetIds})")
+
+        if targetIds:
+            logger.info(f"Successfully extracted {len(df)} email messages from database (filtered by IDs: {targetIds})")
+        else:
+            logger.info(f"Successfully extracted {len(df)} email messages from database (all emails)")
+        
         return df
     except Exception as e:
         logger.error(f"Failed to extract email messages: {str(e)}")
