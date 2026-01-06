@@ -308,6 +308,8 @@ with tab2:
                         )
                         
                         # Add to conversation history
+                        if 'conversation_history' not in st.session_state:
+                            st.session_state.conversation_history = []
                         user_msg = f"Please analyze this email:\n\nSubject: {email_subject if email_subject else 'N/A'}\n\nContent:\n{email_content}"
                         st.session_state.conversation_history.append({
                             'role': 'user',
@@ -343,7 +345,7 @@ with tab2:
     st.markdown("Ask questions about email marketing, get advice, or discuss your email performance.")
     
     # Display conversation history
-    if st.session_state.conversation_history:
+    if 'conversation_history' in st.session_state and st.session_state.conversation_history:
         for msg in st.session_state.conversation_history:
             role = msg.get('role', 'user')
             content = msg.get('content', '')
@@ -369,6 +371,8 @@ with tab2:
             st.warning("⚠️ Please run the analysis first in 'Analysis Mode' to initialize the agent.")
         else:
             # Add user message to history
+            if 'conversation_history' not in st.session_state:
+                st.session_state.conversation_history = []
             st.session_state.conversation_history.append({
                 'role': 'user',
                 'content': user_question
@@ -382,15 +386,20 @@ with tab2:
             with st.chat_message("assistant"):
                 with st.spinner("Expert is thinking..."):
                     try:
+                        conversation_history = st.session_state.get('conversation_history', [])
+                        email_context = st.session_state.get('email_context', None)
+                        
                         response = chatWithEmailExpert(
                             st.session_state.gemini_model,
                             user_question,
-                            st.session_state.conversation_history[:-1],  # Exclude current message
-                            st.session_state.email_context
+                            conversation_history[:-1] if conversation_history else [],  # Exclude current message
+                            email_context
                         )
                         st.markdown(response)
                         
                         # Add assistant response to history
+                        if 'conversation_history' not in st.session_state:
+                            st.session_state.conversation_history = []
                         st.session_state.conversation_history.append({
                             'role': 'assistant',
                             'content': response
@@ -412,6 +421,8 @@ with tab2:
                             error_msg = f"Error: {str(e)}"
                         
                         st.error(error_msg)
+                        if 'conversation_history' not in st.session_state:
+                            st.session_state.conversation_history = []
                         st.session_state.conversation_history.append({
                             'role': 'assistant',
                             'content': error_msg
@@ -421,7 +432,8 @@ with tab2:
     with st.sidebar:
         st.markdown("---")
         if st.button("🗑️ Clear Chat History", use_container_width=True):
-            st.session_state.conversation_history = []
+            if 'conversation_history' in st.session_state:
+                st.session_state.conversation_history = []
             st.rerun()
         
         st.markdown("---")
