@@ -288,9 +288,17 @@ with tab2:
         if st.button("🔍 Analyze This Email", use_container_width=True, type="primary", key="analyze_single"):
             if not email_content:
                 st.warning("⚠️ Please paste email content first.")
-            elif st.session_state.gemini_model is None:
-                st.warning("⚠️ Please run the analysis first to initialize the agent.")
             else:
+                # Auto-initialize agent if not already initialized
+                if st.session_state.gemini_model is None:
+                    with st.spinner("Initializing AI agent..."):
+                        try:
+                            st.session_state.gemini_model = initializeGeminiAgent()
+                        except Exception as e:
+                            st.error(f"Failed to initialize agent: {str(e)}")
+                            st.stop()
+                
+                # Proceed with analysis
                 with st.spinner("Analyzing email and generating recommendations..."):
                     try:
                         recommendations = analyzeSingleEmailForImprovement(
