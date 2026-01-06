@@ -304,7 +304,9 @@ with tab2:
                         recommendations = analyzeSingleEmailForImprovement(
                             st.session_state.gemini_model,
                             email_content,
-                            email_subject if email_subject else None
+                            email_subject if email_subject else None,
+                            None,  # emailMetrics
+                            st.session_state.analysis_results if st.session_state.analysis_results else None  # Pass batch analysis context
                         )
                         
                         # Add to conversation history

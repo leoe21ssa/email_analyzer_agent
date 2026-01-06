@@ -635,7 +635,7 @@ Provide a helpful, expert response that addresses the user's question. Be specif
         logger.error(f"Failed in chatWithEmailExpert: {str(e)}")
         raise
 
-def analyzeSingleEmailForImprovement(model, emailContent, emailSubject=None, emailMetrics=None):
+def analyzeSingleEmailForImprovement(model, emailContent, emailSubject=None, emailMetrics=None, batchAnalysisContext=None):
     """
     Analyze a single email and provide specific improvement recommendations.
     
@@ -644,6 +644,7 @@ def analyzeSingleEmailForImprovement(model, emailContent, emailSubject=None, ema
         emailContent: The email body/content to analyze
         emailSubject: Optional subject line
         emailMetrics: Optional dict with metrics (openRate, clickRate, etc.)
+        batchAnalysisContext: Optional context from batch analysis (full analysis text)
     
     Returns:
         Detailed improvement recommendations
@@ -665,10 +666,45 @@ def analyzeSingleEmailForImprovement(model, emailContent, emailSubject=None, ema
 - Unsubscribe Rate: {emailMetrics.get('unsubRate', 'N/A')}%
 """
         
+        # Extract SECTION 2 recommendations from batch analysis if available
+        batchContextSection = ""
+        if batchAnalysisContext:
+            # Try to extract SECTION 2 from the batch analysis
+            section2_match = re.search(r'## SECTION 2:.*?(?=##|$)', batchAnalysisContext, re.DOTALL | re.IGNORECASE)
+            if section2_match:
+                section2_content = section2_match.group(0)
+                batchContextSection = f"""
+
+**IMPORTANT - Batch Analysis Recommendations (Use as Reference Baseline):**
+Based on the comprehensive analysis of all your emails, these are the recommended ranges from SECTION 2:
+
+{section2_content}
+
+**CRITICAL INSTRUCTIONS FOR CONSISTENCY:**
+- Your recommendations for this individual email MUST be consistent with the batch analysis recommendations above
+- If the current email's metrics are WITHIN the recommended ranges from batch analysis, state that they are already optimal or suggest minor fine-tuning, NOT major changes
+- For example:
+  * If batch analysis recommends "200-500 words" and this email has 343 words (within range), DO NOT recommend reducing it below 200 words. Instead, confirm it's in the optimal range or suggest minor adjustments
+  * If batch analysis recommends "2-3 CTAs" and this email has 2 CTAs, DO NOT recommend changing the count unless there's a specific placement or wording issue
+  * Use the batch analysis as the baseline reference, and only recommend significant adjustments if this specific email deviates substantially from the recommended ranges
+- Only recommend changes that align with the batch analysis recommendations
+"""
+            else:
+                # If we can't extract SECTION 2, use the full context
+                batchContextSection = f"""
+
+**IMPORTANT - Batch Analysis Context:**
+Based on the comprehensive analysis of all your emails, use these recommendations as your baseline reference:
+
+{batchAnalysisContext[:2000]}...
+
+**CRITICAL:** Your recommendations MUST be consistent with the batch analysis above. If this email's current metrics are within the recommended ranges, confirm they are optimal rather than suggesting major changes.
+"""
+        
         systemPrompt = getEmailMarketingExpertSystemPrompt()
         
         prompt = f"""{systemPrompt}
-
+{batchContextSection}
 **Email to Analyze:**
 {subjectSection}
 **Email Content:**
@@ -676,12 +712,12 @@ def analyzeSingleEmailForImprovement(model, emailContent, emailSubject=None, ema
 {metricsSection}
 
 **Your Task:**
-Analyze this email and provide SPECIFIC, QUANTIFIABLE recommendations based on the email data patterns.
+Analyze this email and provide SPECIFIC, QUANTIFIABLE recommendations. Your recommendations MUST be consistent with the batch analysis recommendations provided above (if available).
 
 **1. Email Length:**
    - Current: [word count] words, [character count] characters in subject
-   - Recommended: [exact word count] words, [exact character count] characters in subject
-   - Data evidence: "Top performers average [X] words with [Y]% higher open rates"
+   - Recommended: [MUST be within the range recommended in batch analysis. If current word count is within the recommended range, state that it's already optimal or suggest minor adjustments, NOT major reductions. Reference the batch analysis recommendation]
+   - Data evidence: Reference the batch analysis recommendations and explain why this specific email is optimal or needs adjustment
 
 **2. Emojis (Quantity and Type):**
    - Current: [count] emojis in [locations]
