@@ -1,6 +1,7 @@
 import pandas as pd
 import logging
 from src.database import getEmailMessages
+from src.metrics import calculateAllMetrics
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,7 @@ def processEmailData():
             return df
         
         # Convert numeric columns to numeric type (in case they come as strings)
-        numericColumns = ['mcsent', 'mcopened', 'mcclicked', 'mcunsub']
+        numericColumns = ['mcsent', 'mcopened', 'mcclicked', 'mcunsub', 'mcabuse']
         for col in numericColumns:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
@@ -28,9 +29,13 @@ def processEmailData():
         df['openRate'] = (df['mcopened'] / df['mcsent'] * 100).fillna(0)
         df['clickRate'] = (df['mcclicked'] / df['mcsent'] * 100).fillna(0)
         df['unsubRate'] = (df['mcunsub'] / df['mcsent'] * 100).fillna(0)
+        df['abuseRate'] = (df['mcabuse'] / df['mcsent'] * 100).fillna(0)
         
         # Filter out emails with zero sends to avoid division issues
         df = df[df['mcsent'] > 0]
+        
+        # Calculate all quantifiable metrics (subject and body metrics)
+        df = calculateAllMetrics(df)
         
         # Add effectiveness score (weighted combination of metrics)
         # Higher open and click rates are good, lower unsub rate is good

@@ -24,6 +24,7 @@ class Message(Base):
     alias = Column(String)
     mcsent = Column(BigInteger)
     mcunsub = Column(BigInteger)
+    mcabuse = Column(BigInteger)
     subject = Column(String)
     mcopened = Column(BigInteger)
     mcclicked = Column(BigInteger)
@@ -104,6 +105,7 @@ def getEmailMessages():
                 'alias': msg.alias,
                 'mcsent': msg.mcsent,
                 'mcunsub': msg.mcunsub,
+                'mcabuse': msg.mcabuse,
                 'subject': msg.subject,
                 'mcopened': msg.mcopened,
                 'mcclicked': msg.mcclicked,
