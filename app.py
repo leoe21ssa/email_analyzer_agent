@@ -133,11 +133,11 @@ def runCompleteAnalysis(force_refresh=False, show_spinners=True):
             email_data = processEmailData()
             if email_data.empty:
                 if show_spinners:
-                    st.error("No email data found in database")
+                st.error("No email data found in database")
                 return False
         except Exception as e:
             if show_spinners:
-                st.error(f"Failed to load email data: {str(e)}")
+            st.error(f"Failed to load email data: {str(e)}")
             return False
     
     # Step 2: Get email IDs from environment (for cache hash)
@@ -167,7 +167,7 @@ def runCompleteAnalysis(force_refresh=False, show_spinners=True):
                 st.session_state.gemini_model = initializeGeminiAgent()
             except Exception as e:
                 if show_spinners:
-                    st.error(f"Failed to initialize agent: {str(e)}")
+                st.error(f"Failed to initialize agent: {str(e)}")
                 return False
     
     # Step 6: Run analysis (data changed or cache doesn't exist)
@@ -205,15 +205,15 @@ Email Performance Summary:
             if "429" in errorStr or "ResourceExhausted" in errorStr:
                 if "GenerateRequestsPerDay" in errorStr or "free_tier_requests" in errorStr or "limit: 20" in errorStr:
                     if show_spinners:
-                        st.error("""
-                        ⚠️ **Daily Limit Reached**
-                        
-                        You have reached the daily limit of 20 requests on the free tier of Gemini API.
-                        
-                        **You must wait until tomorrow** for the limit to reset automatically.
-                        
-                        The limit resets daily at 00:00 UTC.
-                        """)
+                    st.error("""
+                    ⚠️ **Daily Limit Reached**
+                    
+                    You have reached the daily limit of 20 requests on the free tier of Gemini API.
+                    
+                    **You must wait until tomorrow** for the limit to reset automatically.
+                    
+                    The limit resets daily at 00:00 UTC.
+                    """)
                     return False
                 else:
                     # Rate limit (per minute) - can retry
@@ -221,13 +221,13 @@ Email Performance Summary:
                     if match:
                         waitTime = float(match.group(1))
                         if show_spinners:
-                            st.warning(f"⚠️ Rate limit exceeded. Please wait {waitTime:.0f} seconds and try again.")
+                        st.warning(f"⚠️ Rate limit exceeded. Please wait {waitTime:.0f} seconds and try again.")
                     else:
                         if show_spinners:
-                            st.error(f"Quota error: {str(e)}")
+                        st.error(f"Quota error: {str(e)}")
             else:
                 if show_spinners:
-                    st.error(f"Analysis failed: {str(e)}")
+                st.error(f"Analysis failed: {str(e)}")
             return False
 
 # Main UI
@@ -272,7 +272,7 @@ with tab1:
                 st.success("✅ Analysis refreshed successfully!")
                 st.rerun()
     
-    if st.button("🚀 Run Complete Analysis", use_container_width=True, type="primary", key="run_analysis"):
+    if st.button("🚀 Run Complete Analysis", type="primary", key="run_analysis"):
         if runCompleteAnalysis():
             st.success("✅ Analysis completed successfully!")
             st.balloons()
@@ -309,7 +309,7 @@ with tab2:
             key="email_content"
         )
         
-        if st.button("🔍 Analyze This Email", use_container_width=True, type="primary", key="analyze_single"):
+        if st.button("🔍 Analyze This Email", type="primary", key="analyze_single"):
             if not email_content:
                 st.warning("⚠️ Please paste email content first.")
             else:
@@ -457,13 +457,13 @@ with tab2:
     # Sidebar actions
     with st.sidebar:
         st.markdown("---")
-        if st.button("🗑️ Clear Chat History", use_container_width=True):
+        if st.button("🗑️ Clear Chat History"):
             if 'conversation_history' in st.session_state:
                 st.session_state.conversation_history = []
             st.rerun()
         
         st.markdown("---")
-        if st.button("🗑️ Clear Cache", use_container_width=True, help="Delete cached analysis to force refresh"):
+        if st.button("🗑️ Clear Cache", help="Delete cached analysis to force refresh"):
             if CACHE_FILE.exists():
                 CACHE_FILE.unlink()
                 st.success("Cache cleared!")
@@ -490,7 +490,7 @@ with tab3:
     if email_data.empty:
         st.warning("No email data available. Please ensure emails are loaded in the database.")
     else:
-        col1, col2, col3 = st.columns(3)
+        col1, col2 = st.columns(2)
         
         with col1:
             rate_options = {
@@ -500,7 +500,7 @@ with tab3:
                 'Abuse Rate': 'abuseRate'
             }
             selected_rate_label = st.selectbox(
-                "Select Rate",
+                "Select Rate (X-axis)",
                 options=list(rate_options.keys()),
                 key="rate_selector"
             )
@@ -521,20 +521,11 @@ with tab3:
                 'Body - CTAs Distinct': 'body_ctas_distinct'
             }
             selected_metric_label = st.selectbox(
-                "Select Metric",
+                "Select Metric (Y-axis)",
                 options=list(metric_options.keys()),
                 key="metric_selector"
             )
             selected_metric = metric_options[selected_metric_label]
-        
-        with col3:
-            grouping_options = ['Quartiles', 'Deciles']
-            selected_grouping = st.selectbox(
-                "Grouping Method",
-                options=grouping_options,
-                index=0,
-                key="grouping_selector"
-            )
         
         # Check if selected metric exists in data
         if selected_metric not in email_data.columns:
@@ -546,309 +537,61 @@ with tab3:
             if len(plot_data) == 0:
                 st.warning("No data available for selected metric and rate combination.")
             else:
-                # Grouping logic
-                def create_qcut_groups(data, q, labels=None, metric_name=None):
-                    """Helper function to create quartile groups with fixed percentiles.
-                    Always creates exactly 4 quartiles based on 25%, 50%, 75% percentiles.
-                    Returns (grouped_series, bins_info_dict) where bins_info contains range information."""
-                    try:
-                        # For quartiles (q=4), always use fixed percentiles
-                        if q == 4 and labels and len(labels) == 4:
-                            min_val = float(data.min())
-                            max_val = float(data.max())
-                            
-                            # If all values are the same, create 4 equal groups anyway
-                            if min_val == max_val:
-                                bins = [min_val, min_val, min_val, min_val, max_val]
-                            else:
-                                # Calculate percentiles: 25%, 50%, 75%
-                                p25 = float(data.quantile(0.25))
-                                p50 = float(data.quantile(0.50))
-                                p75 = float(data.quantile(0.75))
-                                
-                                # Create bins: use percentiles, but ensure we have exactly 5 edges
-                                # If percentiles are equal, use equal-width bins
-                                unique_percentiles = sorted(list(set([min_val, p25, p50, p75, max_val])))
-                                
-                                if len(unique_percentiles) >= 5:
-                                    # All percentiles are different - use them
-                                    bins = [min_val, p25, p50, p75, max_val]
-                                elif len(unique_percentiles) == 4:
-                                    # One percentile is duplicate - fill with equal spacing
-                                    bins = [min_val]
-                                    if p25 > min_val:
-                                        bins.append(p25)
-                                    bins.append(p50)
-                                    if p75 > p50:
-                                        bins.append(p75)
-                                    bins.append(max_val)
-                                    # Fill to 5 if needed
-                                    while len(bins) < 5:
-                                        # Insert intermediate values
-                                        for i in range(len(bins) - 1):
-                                            mid = (bins[i] + bins[i+1]) / 2
-                                            if mid not in bins:
-                                                bins.insert(i+1, mid)
-                                                break
-                                elif len(unique_percentiles) == 3:
-                                    # Two percentiles are duplicates - use equal spacing
-                                    bins = [min_val, 
-                                           min_val + (max_val - min_val) * 0.25,
-                                           min_val + (max_val - min_val) * 0.5,
-                                           min_val + (max_val - min_val) * 0.75,
-                                           max_val]
-                                else:
-                                    # All percentiles are the same - use equal spacing
-                                    bins = [min_val,
-                                           min_val + (max_val - min_val) * 0.25,
-                                           min_val + (max_val - min_val) * 0.5,
-                                           min_val + (max_val - min_val) * 0.75,
-                                           max_val]
-                            
-                            # Ensure bins are sorted and we have exactly 5 edges
-                            bins = sorted(list(set(bins)))
-                            while len(bins) < 5:
-                                # Add intermediate values
-                                for i in range(len(bins) - 1):
-                                    mid = (bins[i] + bins[i+1]) / 2
-                                    if abs(mid - bins[i]) > 1e-10 and abs(mid - bins[i+1]) > 1e-10:
-                                        bins.insert(i+1, mid)
-                                        break
-                                bins = sorted(bins)
-                            
-                            # Take exactly 5 bins for 4 groups
-                            bins = bins[:5]
-                            
-                            # Create bins_info dictionary with ranges
-                            # Use proper interval notation: [a,b] for first interval (include_lowest=True), (a,b] for others
-                            bins_info = {}
-                            for i in range(4):
-                                bin_min = bins[i]
-                                bin_max = bins[i + 1]
-                                
-                                # Format the range in an intuitive way: "3.0 to 4.0 words"
-                                # Use simple "to" instead of mathematical notation for better readability
-                                if metric_name:
-                                    if 'words' in metric_name:
-                                        range_str = f"{bin_min:.1f} to {bin_max:.1f} words"
-                                    elif 'chars' in metric_name:
-                                        range_str = f"{bin_min:.1f} to {bin_max:.1f} chars"
-                                    elif 'emojis' in metric_name:
-                                        range_str = f"{bin_min:.1f} to {bin_max:.1f} emojis"
-                                    elif 'images' in metric_name:
-                                        range_str = f"{bin_min:.1f} to {bin_max:.1f} images"
-                                    elif 'ctas' in metric_name:
-                                        range_str = f"{bin_min:.1f} to {bin_max:.1f} CTAs"
-                                    else:
-                                        range_str = f"{bin_min:.1f} to {bin_max:.1f}"
-                                else:
-                                    range_str = f"{bin_min:.1f} to {bin_max:.1f}"
-                                
-                                if i < len(labels):
-                                    bins_info[labels[i]] = range_str
-                            
-                            # Create descriptive labels with ranges (show only range, not Q1, Q2, etc.)
-                            # This makes it more intuitive for non-statistical users
-                            descriptive_labels = [bins_info[label] for label in labels]
-                            
-                            # Use pd.cut with fixed bins to always create 4 groups
-                            result = pd.cut(data, bins=bins, labels=descriptive_labels, include_lowest=True, duplicates='drop')
-                            
-                            return result, bins_info
-                        
-                        # For other cases (deciles, etc.), use original qcut approach
-                        else:
-                            result, bins = pd.qcut(data, q=q, duplicates='drop', retbins=True)
-                            actual_bins = len(bins) - 1
-                            
-                            # Create bins_info dictionary with ranges
-                            bins_info = {}
-                            for i in range(actual_bins):
-                                bin_min = bins[i]
-                                bin_max = bins[i + 1]
-                                # Format the range based on metric type
-                                if metric_name:
-                                    if 'words' in metric_name:
-                                        range_str = f"{bin_min:.1f}-{bin_max:.1f} words"
-                                    elif 'chars' in metric_name:
-                                        range_str = f"{bin_min:.1f}-{bin_max:.1f} chars"
-                                    elif 'emojis' in metric_name:
-                                        range_str = f"{bin_min:.1f}-{bin_max:.1f} emojis"
-                                    elif 'images' in metric_name:
-                                        range_str = f"{bin_min:.1f}-{bin_max:.1f} images"
-                                    elif 'ctas' in metric_name:
-                                        range_str = f"{bin_min:.1f}-{bin_max:.1f} CTAs"
-                                    else:
-                                        range_str = f"{bin_min:.1f}-{bin_max:.1f}"
-                                else:
-                                    range_str = f"{bin_min:.2f}-{bin_max:.2f}"
-                                
-                                if labels and i < len(labels):
-                                    bins_info[labels[i]] = range_str
-                                else:
-                                    bins_info[f"Bin {i+1}"] = range_str
-                            
-                            if labels is None:
-                                return result, bins_info
-                            else:
-                                if actual_bins == len(labels):
-                                    descriptive_labels = [f"{label} ({bins_info[label]})" for label in labels[:actual_bins]]
-                                    return pd.qcut(data, q=q, duplicates='drop', labels=descriptive_labels), bins_info
-                                elif actual_bins > 0 and actual_bins < len(labels):
-                                    adjusted_labels = labels[:actual_bins]
-                                    descriptive_labels = [f"{label} ({bins_info[label]})" for label in adjusted_labels]
-                                    return pd.qcut(data, q=q, duplicates='drop', labels=descriptive_labels), bins_info
-                                else:
-                                    return result, bins_info
-                    except Exception as e:
-                        # Fallback: create equal-width bins
-                        try:
-                            min_val = data.min()
-                            max_val = data.max()
-                            if max_val == min_val:
-                                # All values are the same
-                                return pd.Series([f"{labels[0] if labels else 'All'} ({min_val:.0f})"] * len(data), index=data.index), {}
-                            
-                            bins = [min_val, min_val + (max_val - min_val) * 0.25,
-                                   min_val + (max_val - min_val) * 0.5,
-                                   min_val + (max_val - min_val) * 0.75, max_val]
-                            
-                            if labels and len(labels) == 4:
-                                bins_info = {}
-                                for i in range(4):
-                                    bin_min = bins[i]
-                                    bin_max = bins[i + 1]
-                                    if metric_name:
-                                        if 'words' in metric_name:
-                                            range_str = f"{bin_min:.1f}-{bin_max:.1f} words"
-                                        elif 'chars' in metric_name:
-                                            range_str = f"{bin_min:.1f}-{bin_max:.1f} chars"
-                                        else:
-                                            range_str = f"{bin_min:.1f}-{bin_max:.1f}"
-                                    else:
-                                        range_str = f"{bin_min:.1f}-{bin_max:.1f}"
-                                    bins_info[labels[i]] = range_str
-                                
-                                descriptive_labels = [f"{label} ({bins_info[label]})" for label in labels]
-                                result = pd.cut(data, bins=bins, labels=descriptive_labels, include_lowest=True)
-                                return result, bins_info
-                            else:
-                                return pd.cut(data, bins=bins, include_lowest=True), {}
-                        except:
-                            return pd.Series(['All'] * len(data), index=data.index), {}
-                
-                bins_info = {}
-                if selected_grouping == 'Quartiles':
-                    plot_data['group'], bins_info = create_qcut_groups(
-                        plot_data[selected_metric], 
-                        q=4, 
-                        labels=['Q1', 'Q2', 'Q3', 'Q4'],
-                        metric_name=selected_metric
-                    )
-                elif selected_grouping == 'Deciles':
-                    plot_data['group'], bins_info = create_qcut_groups(
-                        plot_data[selected_metric], 
-                        q=10,
-                        metric_name=selected_metric
-                    )
-                    
-                    if plot_data['group'].nunique() < 4:
-                        st.info("Not enough data for deciles. Using quartiles instead.")
-                        plot_data['group'], bins_info = create_qcut_groups(
-                            plot_data[selected_metric], 
-                            q=4, 
-                            labels=['Q1', 'Q2', 'Q3', 'Q4'],
-                            metric_name=selected_metric
-                        )
-                # Convert any Interval objects to strings for Plotly compatibility
-                # This is needed for deciles and other groupings that don't use labels
-                # Format with 2 decimal places for consistency
-                def format_interval_to_string(interval_obj):
-                    """Convert Interval object to formatted string with 2 decimal places."""
-                    if hasattr(interval_obj, 'left') and hasattr(interval_obj, 'right'):
-                        left = float(interval_obj.left)
-                        right = float(interval_obj.right)
-                        # Check if it's closed on left/right
-                        left_bracket = '[' if interval_obj.closed == 'left' or interval_obj.closed == 'both' else '('
-                        right_bracket = ']' if interval_obj.closed == 'right' or interval_obj.closed == 'both' else ')'
-                        return f"{left_bracket}{left:.1f}, {right:.1f}{right_bracket}"
-                    return str(interval_obj)
-                
-                try:
-                    # Try to access the first value to check its type
-                    if len(plot_data) > 0:
-                        first_val = plot_data['group'].iloc[0]
-                        # Check if it's an Interval object (has 'left' and 'right' attributes)
-                        if hasattr(first_val, 'left') and hasattr(first_val, 'right'):
-                            # Convert Interval objects to formatted string representation
-                            plot_data['group'] = plot_data['group'].apply(format_interval_to_string)
-                        else:
-                            # Already strings, but ensure they're properly formatted
-                            plot_data['group'] = plot_data['group'].astype(str)
-                except (AttributeError, IndexError):
-                    # If we can't check, try converting anyway (safe operation)
-                    try:
-                        plot_data['group'] = plot_data['group'].astype(str)
-                    except:
-                        pass
-                
-                # Calculate average rate per group
-                grouped_stats = plot_data.groupby('group', observed=True).agg({
-                    selected_rate: ['mean', 'median', 'min', 'max', 'count']
-                }).round(2)
-                grouped_stats.columns = ['Average Rate', 'Median Rate', 'Rate Min', 'Rate Max', 'Email Count']
-                grouped_stats = grouped_stats.reset_index()
-                
-                # Ensure group column is string for Plotly
-                grouped_stats['group'] = grouped_stats['group'].astype(str)
-                
-                # Create bar chart
-                fig = px.bar(
-                    grouped_stats,
-                    x='group',
-                    y='Average Rate',
-                    title=f'{selected_rate_label} by {selected_metric_label} ({selected_grouping})',
-                    labels={'group': selected_metric_label, 'Average Rate': selected_rate_label + ' (%)'},
-                    text='Average Rate'
+                # Create scatter plot with rate on X-axis and metric on Y-axis
+                fig = px.scatter(
+                    plot_data,
+                    x=selected_rate,
+                    y=selected_metric,
+                    title=f'{selected_metric_label} vs {selected_rate_label}',
+                    labels={
+                        selected_rate: selected_rate_label + ' (%)',
+                        selected_metric: selected_metric_label
+                    },
+                    opacity=0.6,
+                    trendline="ols"  # Add linear regression trendline
                 )
-                fig.update_traces(texttemplate='%{text:.2f}%', textposition='outside')
+                
                 fig.update_layout(
-                    xaxis_title=selected_metric_label,
-                    yaxis_title=selected_rate_label + ' (%)',
-                    height=500
+                    xaxis_title=selected_rate_label + ' (%)',
+                    yaxis_title=selected_metric_label,
+                    height=500,
+                    hovermode='closest'
                 )
                 
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
                 
-                # Display statistics table with sorting capability
-                st.markdown("### 📊 Statistics by Group")
+                # Display summary statistics
+                st.markdown("### 📊 Summary Statistics")
                 
-                # Add sorting controls
-                col_sort1, col_sort2 = st.columns(2)
-                with col_sort1:
-                    sort_column = st.selectbox(
-                        "Sort by column:",
-                        options=['group', 'Average Rate', 'Median Rate', 'Rate Min', 'Rate Max', 'Email Count'],
-                        index=0,
-                        key="sort_column_selector"
-                    )
-                with col_sort2:
-                    sort_ascending = st.selectbox(
-                        "Sort order:",
-                        options=[True, False],
-                        format_func=lambda x: "Ascending" if x else "Descending",
-                        index=0,
-                        key="sort_order_selector"
+                col_stat1, col_stat2, col_stat3, col_stat4 = st.columns(4)
+                
+                with col_stat1:
+                    st.metric(
+                        "Total Emails",
+                        len(plot_data)
                     )
                 
-                # Sort the dataframe
-                sorted_stats = grouped_stats.sort_values(by=sort_column, ascending=sort_ascending).reset_index(drop=True)
+                with col_stat2:
+                    st.metric(
+                        f"Avg {selected_rate_label}",
+                        f"{plot_data[selected_rate].mean():.2f}%"
+                    )
                 
-                # Display sorted table
-                st.dataframe(sorted_stats, use_container_width=True)
+                with col_stat3:
+                    st.metric(
+                        f"Avg {selected_metric_label}",
+                        f"{plot_data[selected_metric].mean():.1f}"
+                    )
                 
-                # Calculate correlation
-                correlation = plot_data[selected_metric].corr(plot_data[selected_rate])
+                with col_stat4:
+                    correlation = plot_data[selected_metric].corr(plot_data[selected_rate])
+                    st.metric(
+                        "Correlation",
+                        f"{correlation:.3f}"
+                    )
+                
+                # Correlation interpretation
+                st.markdown("---")
                 st.markdown(f"**Correlation Coefficient:** {correlation:.3f}")
                 
                 if abs(correlation) < 0.1:
@@ -861,6 +604,46 @@ with tab3:
                     st.info("Strong correlation")
                 else:
                     st.info("Very strong correlation")
+                
+                # Display detailed statistics table
+                st.markdown("### 📋 Detailed Statistics")
+                
+                stats_data = {
+                    'Statistic': ['Count', 'Mean', 'Median', 'Std Dev', 'Min', 'Max'],
+                    selected_rate_label: [
+                        len(plot_data),
+                        plot_data[selected_rate].mean(),  # Keep as numeric
+                        plot_data[selected_rate].median(),
+                        plot_data[selected_rate].std(),
+                        plot_data[selected_rate].min(),
+                        plot_data[selected_rate].max()
+                    ],
+                    selected_metric_label: [
+                        len(plot_data),
+                        plot_data[selected_metric].mean(),  # Keep as numeric
+                        plot_data[selected_metric].median(),
+                        plot_data[selected_metric].std(),
+                        plot_data[selected_metric].min(),
+                        plot_data[selected_metric].max()
+                    ]
+                }
+                
+                stats_df = pd.DataFrame(stats_data)
+                st.dataframe(
+                    stats_df, 
+                    width='stretch', 
+                    hide_index=True,
+                    column_config={
+                        selected_rate_label: st.column_config.NumberColumn(
+                            selected_rate_label,
+                            format="%.2f%%"
+                        ),
+                        selected_metric_label: st.column_config.NumberColumn(
+                            selected_metric_label,
+                            format="%.1f"
+                        )
+                    }
+                )
 
 if __name__ == "__main__":
     pass
